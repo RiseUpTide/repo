@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+          content="width=device-width, initial-scale=1.0, user-scalable=yes, viewport-fit=cover">
+    <meta name="format-detection" content="telephone=no">
+    <title>Compose WebView Demo</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+       body {
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        margin: 0;
+        padding: 16px;
+        /* 方法1：标准渐变 */
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+
+        /* 方法2：带浏览器前缀的渐变 */
+        background: -webkit-linear-gradient(135deg, #667eea, #764ba2);
+        background: -moz-linear-gradient(135deg, #667eea, #764ba2);
+        background: -o-linear-gradient(135deg, #667eea, #764ba2);
+
+        color: white;
+        min-height: 100vh;
+    }
+
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            width: 100%;
+        }
+
+        h2 {
+            text-align: center;
+            margin-bottom: 16px;
+            font-size: clamp(18px, 5vw, 22px);
+        }
+
+        .badge {
+            display: inline-block;
+            background: #4CAF50;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 11px;
+            margin-left: 8px;
+            vertical-align: middle;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            justify-content: center;
+            margin-bottom: 16px;
+        }
+
+        button {
+            background: white;
+            color: #667eea;
+            border: none;
+            padding: 10px 16px;
+            font-size: clamp(12px, 3.5vw, 14px);
+            font-weight: 600;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            flex: 1;
+            min-width: 100px;
+            -webkit-appearance: none;
+        }
+
+        button:active {
+            transform: scale(0.98);
+        }
+
+        @media (max-width: 480px) {
+            body {
+                padding: 8px;
+            }
+            .button-group {
+                gap: 8px;
+            }
+            button {
+                min-width: 80px;
+                padding: 8px 12px;
+            }
+        }
+
+        .card {
+            background: rgba(255,255,255,0.15);
+            backdrop-filter: blur(10px);
+            border-radius: 12px;
+            padding: 12px;
+            margin-bottom: 12px;
+        }
+
+        .card-title {
+            font-size: 13px;
+            opacity: 0.9;
+            margin-bottom: 8px;
+            font-weight: 600;
+        }
+
+        .message-box {
+            background: rgba(0,0,0,0.3);
+            border-radius: 8px;
+            padding: 12px;
+            min-height: 50px;
+            word-wrap: break-word;
+            transition: all 0.3s ease;
+            font-size: 14px;
+        }
+
+        .data-list {
+            background: rgba(0,0,0,0.3);
+            border-radius: 8px;
+            padding: 8px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+
+        .data-item {
+            background: rgba(255,255,255,0.1);
+            padding: 8px;
+            margin: 4px 0;
+            border-radius: 6px;
+            font-size: 13px;
+            word-break: break-all;
+        }
+
+        .log-area {
+            background: rgba(0,0,0,0.4);
+            border-radius: 8px;
+            padding: 8px;
+            font-size: 11px;
+            font-family: 'Courier New', monospace;
+            max-height: 150px;
+            overflow-y: auto;
+            word-break: break-all;
+        }
+
+        hr {
+            border-color: rgba(255,255,255,0.2);
+            margin: 12px 0;
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h2>
+        🌐 Compose + WebView
+        <span class="badge">双向通信</span>
+    </h2>
+
+    <div class="button-group">
+        <button onclick="callNativeToast()">Toast</button>
+        <button onclick="callNativeMessage()">发消息</button>
+        <button onclick="callNativeLog()">日志</button>
+    </div>
+
+    <div class="card">
+        <div class="card-title">📨 来自原生</div>
+        <div class="message-box" id="messageBox">
+            等待消息...
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-title">📊 数据</div>
+        <div class="data-list" id="dataList">
+            <div class="data-item">加载中...</div>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-title">📋 日志</div>
+        <div class="log-area" id="logArea">
+            [系统] 页面就绪<br>
+        </div>
+    </div>
+</div>
+
+<script>
+    let dataCount = 0;
+
+    // 等待 DOM 加载完成
+    document.addEventListener('DOMContentLoaded', function() {
+        addLog("✅ DOM 加载完成");
+        refreshData();
+
+        // 检查 Android 桥接
+        if (typeof Android !== 'undefined') {
+            addLog("✅ 桥接正常");
+        } else {
+            addLog("⚠️ 等待桥接连接");
+            // 延迟再检查一次
+            setTimeout(function() {
+                if (typeof Android !== 'undefined') {
+                    addLog("✅ 桥接已连接");
+                } else {
+                    addLog("❌ 桥接失败");
+                }
+            }, 500);
+        }
+    });
+
+    // 接收原生消息
+    function receiveFromNative(message) {
+        addLog("📱 收到: " + message.substring(0, 30));
+        var messageBox = document.getElementById('messageBox');
+        messageBox.innerHTML = "✨ " + message;
+        messageBox.style.background = "rgba(76, 175, 80, 0.3)";
+        setTimeout(function() {
+            messageBox.style.background = "rgba(0,0,0,0.3)";
+        }, 2000);
+    }
+
+    // 刷新数据
+    function refreshData() {
+        addLog("🔄 刷新");
+        dataCount++;
+        var dataList = document.getElementById('dataList');
+        var newData = [
+            "点击次数: " + dataCount,
+            "时间: " + new Date().toLocaleTimeString(),
+            "随机: " + Math.floor(Math.random() * 1000),
+            "状态: ✅ 正常"
+        ];
+        dataList.innerHTML = newData.map(function(text) {
+            return '<div class="data-item">📌 ' + text + '</div>';
+        }).join('');
+    }
+
+    // 调用原生方法
+    function callNativeToast() {
+        if (typeof Android !== 'undefined') {
+            Android.showToast("来自JS: " + new Date().toLocaleTimeString());
+            addLog("🍞 调用Toast");
+        } else {
+            addLog("❌ 无法调用");
+        }
+    }
+
+    function callNativeMessage() {
+        if (typeof Android !== 'undefined') {
+            Android.sendMessage("JS消息 at " + new Date().toLocaleTimeString());
+            addLog("💬 发送消息");
+        } else {
+            addLog("❌ 无法发送");
+        }
+    }
+
+    function callNativeLog() {
+        if (typeof Android !== 'undefined') {
+            Android.log("按钮点击, 计数:" + dataCount);
+            addLog("📝 发送日志");
+        } else {
+            addLog("❌ 无法记录");
+        }
+    }
+
+    function addLog(message) {
+        var logArea = document.getElementById('logArea');
+        var time = new Date().toLocaleTimeString();
+        logArea.innerHTML += '<br>[' + time + '] ' + message;
+        logArea.scrollTop = logArea.scrollHeight;
+
+        // 限制行数
+        var lines = logArea.innerHTML.split('<br>');
+        if (lines.length > 30) {
+            logArea.innerHTML = lines.slice(-25).join('<br>');
+        }
+    }
+</script>
+</body>
+</html>
